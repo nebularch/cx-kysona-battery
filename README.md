@@ -1,241 +1,185 @@
 # CX Kysona Mouse Battery Driver
 
-An out-of-tree Linux HID driver project intended to expose battery telemetry from a compatible Kysona/CX wireless mouse receiver through the Linux power supply subsystem.
+[![Latest Release](https://img.shields.io/github/v/release/nebularch/cx-kysona-battery)](https://github.com/nebularch/cx-kysona-battery/releases)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue.svg)](LICENSE)
 
-The source is based on a Kysona M600 HID driver originally attributed to **Lode Willems (2024)** and carrying the `GPL-2.0-or-later` SPDX identifier. This repository documents the recovered source, build process, and validation workflow for a CX wireless mouse receiver identified by USB ID `373b:1085`.
+An out-of-tree Linux HID driver for exposing battery information from a
+compatible CX/Kysona wireless mouse through the Linux power-supply subsystem.
 
-> **Project status:** The source baseline has been recovered, but the target-kernel build and runtime behavior must be verified before installation. Compatibility with the target receiver and the accuracy of its reported battery properties have not yet been fully established.
+The project targets a wireless mouse receiver identified by USB vendor/product
+ID `373b:1085`. It integrates with the Linux kernel's HID and power-supply
+frameworks so supported desktop utilities can read the mouse's battery level
+without a separate polling application.
 
-## Table of Contents
+> **Compatibility notice:** The driver has been tested on the maintainer's
+> Arch Linux system with a receiver identified as `373b:1085`. Other receivers,
+> mouse revisions, kernels, and distributions may behave differently. Confirm
+> that your hardware matches before installing.
+
+## Table of contents
 
 - [Overview](#overview)
-- [Background](#background)
-- [Hardware Compatibility](#hardware-compatibility)
+- [Project status](#project-status)
+- [Hardware compatibility](#hardware-compatibility)
+- [How it works](#how-it-works)
 - [Features](#features)
-- [How It Works](#how-it-works)
-- [Power Supply Properties](#power-supply-properties)
-- [Repository Structure](#repository-structure)
 - [Requirements](#requirements)
-- [Building](#building)
-- [Installing](#installing)
-- [Verifying the Driver](#verifying-the-driver)
-- [Waybar Integration](#waybar-integration)
+- [Installation on Arch Linux](#installation-on-arch-linux)
+- [Verifying the installation](#verifying-the-installation)
+- [Diagnostics](#diagnostics)
+- [Waybar integration](#waybar-integration)
+- [Kernel updates and DKMS maintenance](#kernel-updates-and-dkms-maintenance)
 - [Troubleshooting](#troubleshooting)
 - [Uninstallation](#uninstallation)
-- [Development Notes](#development-notes)
-- [Known Limitations](#known-limitations)
-- [Security and Reliability](#security-and-reliability)
-- [Contributing](#contributing)
-- [Credits and License](#credits-and-license)
+- [Development and testing](#development-and-testing)
+- [Security and limitations](#security-and-limitations)
+- [Credits and license](#credits-and-license)
 
 ## Overview
 
-Wireless mice may expose battery information through vendor-specific Human Interface Device (HID) reports. Depending on the device, receiver, and Linux kernel version, this information may not be available through the standard Linux power supply interface without a suitable driver.
+Some wireless mice expose battery information through HID feature reports,
+but their receivers may not be supported by the standard Linux HID battery
+driver. Without suitable driver support, the desktop may not display the
+mouse's battery percentage even though the device itself reports battery data.
 
-This project provides an out-of-tree Linux HID driver intended to expose battery information from a compatible wireless mouse receiver.
+This project provides a dedicated kernel HID driver for the targeted receiver.
+It registers a Linux power-supply device so battery properties can be queried
+through the usual sysfs interface.
 
-The driver registers a power supply named:
+The intended result is a battery reading that can be consumed by tools such as
+`upower`, desktop environments, shell scripts, and Waybar.
 
-```text
-cx-mouse-battery
-```
+This is a kernel driver, not a userspace daemon. It relies on the receiver's
+HID protocol and the Linux kernel's device and power-supply infrastructure.
 
-When the driver successfully initializes and registers the power supply, supported battery properties become accessible through the Linux power supply subsystem. Desktop applications and status bars such as Waybar can then use those properties to display battery information.
+## Project status
 
-The project's goals are to:
+The following reflects testing on the maintainer's system. It is not a
+guarantee of compatibility with every device carrying a similar product name.
 
-- Make mouse battery information available on Linux.
-- Expose battery status through a standard kernel interface.
-- Support periodic battery updates.
-- Enable status-bar integration without a separate polling script.
-- Document a reproducible build and troubleshooting workflow.
+| Area | Status |
+|---|---|
+| Target USB ID `373b:1085` | Tested |
+| DKMS build and installation | Tested on the maintainer's Arch setup |
+| Module loading at startup | Configured and tested |
+| HID interface binding | Tested |
+| Battery power-supply registration | Tested |
+| Capacity and status reporting | Tested |
+| Compatibility with other receiver revisions | Not established |
+| Compatibility with every kernel and distribution | Not established |
 
-## Background
+The driver should be considered hardware-specific until additional devices
+and kernel versions have been tested.
 
-This repository preserves a recovered source baseline for further development and validation.
-
-The source header identifies the original implementation as a USB HID driver for Kysona M600 mice. The recovered source includes a USB device entry for `373b:1085` and registers a power supply named `cx-mouse-battery`.
-
-The original copyright notice and author attribution are retained. Future changes specific to the target receiver should be documented separately.
-
-The relationship between the original Kysona M600 hardware and the CX receiver has not been fully established. Compatibility should not be assumed beyond the USB identification and hardware tests that have actually been completed.
-
-## Hardware Compatibility
+## Hardware compatibility
 
 | Property | Value |
 |---|---|
-| Intended device | CX wireless mouse receiver |
-| USB vendor ID | `373b` |
-| USB product ID | `1085` |
-| USB identifier | `373b:1085` |
-| Kernel subsystem | HID / USB |
-| Power supply name | `cx-mouse-battery` |
-| Primary desktop integration | Waybar |
-| Development environment | Linux; Arch Linux is the current target environment |
+| Target USB vendor/product ID | `373b:1085` |
+| Driver module | `hid_kysona` |
+| DKMS package name | `hid-kysona` |
+| Tested power-supply name | `cx-mouse-battery` |
+| Power-supply sysfs path | `/sys/class/power_supply/cx-mouse-battery` |
 
-### Identify the receiver
+The USB ID identifies the receiver, not necessarily every mouse or receiver
+revision sold under the same retail name. A matching USB ID is a useful
+compatibility check, but it does not prove that all protocol behavior is
+identical.
 
-Connect the receiver and run:
-
-```bash
-lsusb -d 373b:1085
-```
-
-To list connected USB devices more generally:
+Check the connected USB devices with:
 
 ```bash
-lsusb
+lsusb -nn
 ```
 
-The presence of this USB ID confirms that the receiver has been enumerated. It does not, by itself, prove that the driver can communicate with the receiver or interpret its battery reports correctly.
+Look for:
 
-### Compatibility scope
+```text
+373b:1085
+```
 
-Compatibility is intended for the specific receiver identified above.
+If the ID is different, do not assume this driver is compatible.
 
-Other Kysona products, different wireless receivers, devices using similar chipsets, and future hardware revisions are not guaranteed to work.
+## How it works
+
+The driver connects the receiver's HID reports to Linux's device-management
+and power-supply interfaces.
+
+At a high level:
+
+1. **USB identification:** Linux enumerates the receiver and identifies its
+   vendor and product IDs.
+2. **HID binding:** The kernel matches the supported HID device to the
+   `hid_kysona` driver.
+3. **Device communication:** The driver communicates with the device using
+   its supported HID report protocol.
+4. **Power-supply registration:** The driver exposes battery properties through
+   the Linux power-supply subsystem.
+5. **Userspace access:** Applications read the resulting sysfs properties
+   without needing to communicate with the HID device themselves.
+
+The exposed interface follows the normal Linux power-supply model, making
+battery readings available to standard tools.
+
+This description is the driver's intended integration path; exact report
+behavior and property availability depend on the connected hardware and
+driver implementation.
+
+### Why use the kernel power-supply interface?
+
+Exposing battery information through the kernel avoids requiring a separate
+userspace process to poll the receiver and maintain its own battery state.
+
+It also makes the data easier to consume from scripts and desktop utilities
+that already understand Linux power-supply devices.
 
 ## Features
 
-The recovered source implements the following behavior:
+On the tested setup, the driver exposes battery information through:
 
-- **Battery capacity:** Exposes the reported battery percentage.
-- **Charging state:** Interprets a device-reported charging indicator.
-- **Voltage reporting:** Converts the reported voltage from millivolts to microvolts for the Linux power supply interface.
-- **Wired-mode handling:** Uses a wired-mode indicator when determining reported battery status.
-- **Periodic polling:** Schedules battery work at a five-second interval.
-- **Power supply integration:** Registers a Linux power supply named `cx-mouse-battery`.
-- **Status-bar integration:** Can be used by Waybar when the power supply is available and reports the expected properties.
+- **Capacity:** battery level as a percentage.
+- **Status:** the reported battery state, such as `Discharging`, when provided.
+- **Voltage:** a voltage reading when the driver and device expose it.
 
-Reporting accuracy, update behavior, and the meaning of each hardware field still require validation on the target device.
+Not every property is guaranteed to be available on every compatible device.
+A reported value should also be treated as the device's telemetry, not an
+independent measurement of the battery's actual remaining runtime.
 
-## How It Works
-
-The driver connects the HID device to the Linux power supply framework.
-
-The general workflow is:
-
-1. The USB subsystem enumerates the receiver.
-2. The HID subsystem identifies and initializes a matching interface.
-3. The driver requests or receives device report data.
-4. The driver interprets selected report fields as battery telemetry.
-5. The driver exposes supported properties through the registered power supply.
-6. User-space software reads those properties through the kernel's sysfs interface.
-
-### Report interpretation
-
-The recovered implementation uses the following report-data offsets:
-
-| Field | Interpretation in the implementation |
-|---|---|
-| `data[2]` | Wired-mode indicator; `1` indicates wired mode |
-| `data[6]` | Battery capacity |
-| `data[7]` | Charging indicator |
-| `data[8:9]` | Battery voltage in millivolts |
-
-These offsets are specific to the recovered implementation. They should not be treated as a universal Kysona protocol specification or applied to unrelated hardware without verification.
-
-### Polling
-
-The source defines:
-
-```c
-#define BATTERY_TIMEOUT_MS 5000
-```
-
-This configures a five-second interval for the relevant delayed battery work.
-
-It does not guarantee that the hardware updates its report at exactly five-second intervals or that every poll produces a new reading.
-
-## Power Supply Properties
-
-The source declares support for the following Linux power supply properties:
-
-| Property | Purpose |
-|---|---|
-| `STATUS` | Reports the charging status as interpreted by the driver |
-| `PRESENT` | Indicates whether the power supply is present |
-| `CAPACITY` | Reports battery capacity as a percentage |
-| `SCOPE` | Identifies the power supply's scope |
-| `MODEL_NAME` | Exposes the model name provided by the driver |
-| `VOLTAGE_NOW` | Reports voltage in microvolts |
-| `ONLINE` | Reports the online state according to the driver's internal flag |
-
-The driver converts voltage from millivolts to microvolts by multiplying the reported value by `1000`.
-
-The meaning of `ONLINE` is implementation-specific. Do not change it to represent wired mode without reviewing the power supply behavior and testing the effects on user-space consumers.
-
-### Expected sysfs location
-
-When registration succeeds, the power supply is expected to appear at:
-
-```text
-/sys/class/power_supply/cx-mouse-battery/
-```
-
-The available files depend on the properties registered by the driver and the behavior of the running kernel.
-
-## Repository Structure
-
-```text
-cx-kysona-battery/
-├── .gitignore
-├── LICENSE
-├── Makefile
-├── README.md
-└── hid-kysona.c
-```
-
-| File | Description |
-|---|---|
-| `hid-kysona.c` | HID driver source |
-| `Makefile` | Out-of-tree kernel module build rules |
-| `.gitignore` | Excludes generated module and build files |
-| `LICENSE` | GPL license text |
-| `README.md` | Project documentation |
-
-Compiled kernel modules and generated build files should not be committed to the repository.
+The driver does not promise a specific polling interval, exact remaining-time
+estimate, or compatibility with every battery-monitoring application.
 
 ## Requirements
 
-You will need:
+The installation instructions below target Arch Linux and use DKMS.
 
-- A Linux system with a compatible kernel.
-- Kernel headers or a build tree matching the kernel you intend to run.
-- GNU Make.
-- A compatible C compiler and kernel build tools.
-- Permission to load kernel modules for runtime testing.
-- The target receiver for hardware verification.
-
-### Arch Linux
-
-Install the headers matching your target kernel.
-
-For the standard Arch Linux `linux` kernel:
+Install the build tools and headers for the kernel you intend to use:
 
 ```bash
-sudo pacman -S --needed linux-headers base-devel
+sudo pacman -S --needed base-devel dkms linux-headers git
 ```
 
-If you use another kernel package, install the corresponding headers for that kernel instead.
+For a different kernel package, install its corresponding headers instead of
+assuming `linux-headers` is correct. For example, systems using a separately
+packaged LTS or Zen kernel need the matching header package.
 
-Check the running kernel version:
+Check the running kernel and available build directory:
 
 ```bash
 uname -r
+test -e "/usr/lib/modules/$(uname -r)/build" \
+  && echo "Kernel build directory found" \
+  || echo "Matching kernel headers may be missing"
 ```
 
-Check whether its build tree is available:
+DKMS rebuilds the module for supported installed kernels when the necessary
+kernel build files are available.
 
-```bash
-test -e "/usr/lib/modules/$(uname -r)/build/Makefile" \
-  && echo "Kernel build tree found" \
-  || echo "Matching kernel build tree not found"
-```
+## Installation on Arch Linux
 
-If you have upgraded your kernel but have not rebooted, the running kernel and installed headers may not match. Build for the intended kernel and test after booting into that same version.
+These instructions install the driver from the repository source using DKMS.
+Review the commands before running them.
 
-## Building
+### 1. Obtain the source
 
 Clone the repository:
 
@@ -244,333 +188,35 @@ git clone https://github.com/nebularch/cx-kysona-battery.git
 cd cx-kysona-battery
 ```
 
-Build the module for the running kernel:
+Inspect the USB ID before proceeding:
 
 ```bash
-make
+lsusb -nn
 ```
 
-To build against a particular installed kernel, set `KDIR` to that kernel's build directory. Replace the example version below with the actual directory name under `/usr/lib/modules/`:
+Confirm that the target receiver is present as `373b:1085`.
 
-```bash
-make KDIR="/usr/lib/modules/6.x.y-arch1-1/build"
-```
+### 2. Install the DKMS source
 
-Clean generated build files:
-
-```bash
-make clean
-```
-
-Inspect the resulting module:
-
-```bash
-modinfo ./hid-kysona.ko
-```
-
-Check its kernel compatibility metadata:
-
-```bash
-modinfo -F vermagic ./hid-kysona.ko
-```
-
-### Build compatibility
-
-The module must be built for the kernel that will load it. A module built for one kernel version should not be assumed to work with another.
-
-A successful build proves only that compilation completed. It does not establish that:
-
-- The driver successfully probes the target receiver.
-- The HID reports are interpreted correctly.
-- Battery readings are accurate.
-- Wired-mode behavior is correct.
-- The module can safely claim the intended HID interface alongside other interfaces.
-
-## Installing
-
-**Installation has not yet been established as a verified, automated procedure for this repository.**
-
-Before installing:
-
-1. Review the source and confirm that you understand the applicable license terms.
-2. Build against the intended kernel.
-3. Review the module metadata.
-4. Keep a working kernel and a recovery path available.
-5. Check whether another driver already claims the target interface.
-6. Review kernel logs during testing.
-
-A typical manual out-of-tree module installation uses a kernel-specific directory under:
-
-```text
-/usr/lib/modules/<kernel-version>/updates/
-```
-
-Replace `<kernel-version>` with the actual kernel version. After installing the module in the appropriate location, refresh the module dependency metadata for that kernel.
-
-For example, after installing the module:
-
-```bash
-sudo depmod 6.x.y-arch1-1
-modinfo -k 6.x.y-arch1-1 -n hid_kysona
-```
-
-Replace `6.x.y-arch1-1` in both commands with the actual kernel version. Confirm the resolved module path before loading the module.
-
-Do not overwrite another working module or load a module built for a different kernel version.
-
-Secure Boot and distribution-specific module-signing policies may prevent an unsigned custom module from loading.
-
-## Verifying the Driver
-
-### 1. Confirm USB enumeration
-
-```bash
-lsusb -d 373b:1085
-```
-
-### 2. Inspect kernel logs
-
-After attempting to load the driver or reconnecting the receiver:
-
-```bash
-sudo journalctl -k -b --no-pager \
-  | grep -iE 'kysona|hid|battery'
-```
-
-Look for probe failures, report errors, power supply registration errors, or module compatibility issues.
-
-### 3. Check the power supply
-
-```bash
-ls -d /sys/class/power_supply/cx-mouse-battery 2>/dev/null
-```
-
-If the directory exists, inspect its available properties:
-
-```bash
-for file in /sys/class/power_supply/cx-mouse-battery/*; do
-    [ -f "$file" ] || continue
-    printf '%s: ' "${file##*/}"
-    cat "$file"
-done
-```
-
-This reads the available sysfs values without modifying the device.
-
-### 4. Verify the reported values
-
-Compare the reported capacity, charging state, voltage, and online state with the actual device behavior.
-
-Repeat the checks while charging, disconnecting, reconnecting, and switching between wired and wireless operation, where supported.
-
-Do not rely on the driver's values for critical decisions. This is a custom hardware integration that may report stale or incorrect telemetry.
-
-## Waybar Integration
-
-If the driver successfully registers the `cx-mouse-battery` power supply, Waybar can use it to display battery information.
-
-Example JSONC module:
-
-```jsonc
-"battery#mouse": {
-    "bat": "cx-mouse-battery",
-    "interval": 5,
-    "format": "󰍽 {capacity}%",
-    "format-charging": "󰍽  {capacity}%"
-}
-```
-
-Add `battery#mouse` to the appropriate module list in your Waybar configuration.
-
-Restart Waybar after saving the changes.
-
-### If the module does not appear
-
-Check the power supply independently:
-
-```bash
-cat /sys/class/power_supply/cx-mouse-battery/capacity
-cat /sys/class/power_supply/cx-mouse-battery/status
-```
-
-A file may be unavailable if the power supply was not registered or the expected property is not exposed.
-
-If the sysfs values are correct but Waybar still shows nothing, investigate the Waybar configuration and logs before modifying the driver.
-
-## Troubleshooting
-
-### The build fails
-
-- Check that the kernel build tree exists.
-- Confirm that the headers match the intended kernel.
-- Read the first compiler error rather than focusing only on the final `make` failure.
-- Inspect recent source changes.
-- Run `make clean` before rebuilding when appropriate.
-
-### The USB device is missing
-
-- Confirm that the receiver is connected.
-- Check the output of `lsusb`.
-- Try another USB port if appropriate.
-- Inspect kernel logs.
-- Confirm that the source includes the intended USB ID.
-
-### The module fails to load
-
-- Check that it was built for the active kernel.
-- Inspect `modinfo` and the module's `vermagic`.
-- Check kernel logs for symbol, signing, or probe errors.
-- Verify Secure Boot and module-signing requirements.
-- Check whether another driver already claims the target interface.
-
-### The power supply is missing
-
-- Verify that the module loaded.
-- Check for HID probe and power supply registration errors.
-- Confirm that the intended USB interface matches the driver.
-- Check that the module was installed for the active kernel.
-
-### The battery percentage is incorrect
-
-- Inspect the values exposed by the driver.
-- Verify the expected interpretation of the report fields.
-- Check the device state and reconnect the receiver.
-- Compare the reported reading with a known device state before changing the parsing logic.
-
-### The charging icon is incorrect
-
-- Inspect the power supply's `status` and `online` properties.
-- Review the wired-mode and charging-state logic.
-- Do not assume that wired mode and charging state are interchangeable.
-- Test any changes against actual hardware before relying on them.
-
-### The module disappears after a kernel upgrade
-
-Out-of-tree modules may need to be rebuilt for a new kernel version.
-
-Rebuild against that kernel's matching headers, install the resulting module for the correct version, refresh the module dependency metadata, and verify the resolved module path before loading it.
-
-## Uninstallation
-
-Reverse the installation steps used on your system.
-
-In general:
-
-1. Identify the exact custom module file installed for the target kernel.
-2. Remove only that custom module file.
-3. Remove any custom module-loading configuration created for this driver.
-4. Refresh module dependency metadata for the affected kernel.
-5. Reboot or unload the driver when it is safe to do so.
-6. Verify that the custom module is no longer being selected.
-
-Do not remove distribution-provided HID modules or unrelated kernel files. If the driver has claimed a HID interface, avoid forcibly unbinding other interfaces—particularly a keyboard interface—without understanding the consequences.
-
-## Development Notes
-
-The current source should be treated as a recovered baseline.
-
-Before making functional changes:
-
-- Preserve the original author's copyright notice and SPDX identifier.
-- Keep a known-good copy of the source.
-- Document the reason for each change.
-- Build against the intended kernel.
-- Inspect module logs and power supply values.
-- Test wireless and wired operation separately, where applicable.
-- Verify Waybar behavior independently of driver behavior.
-- Avoid committing compiled kernel modules or unrelated machine configuration.
-
-Changes to `ONLINE`, charging status, report parsing, polling, and interface matching should be accompanied by explicit hardware test results.
-
-## Known Limitations
-
-- Full compatibility with the target receiver has not been independently established.
-- Battery report interpretation is based on the recovered implementation.
-- Kernel compatibility must be verified for each target version.
-- Battery readings may be stale or unavailable when the receiver or mouse is asleep or disconnected.
-- Wired-mode and charging semantics require hardware verification.
-- The repository does not currently provide a verified automated installer or DKMS workflow.
-- Other Kysona products and similar receivers are not guaranteed to work.
-- Runtime testing is required before the driver can be considered reliable.
-
-## Security and Reliability
-
-Kernel modules execute with kernel-level privileges. Only build and load source you trust.
-
-Before testing:
-
-- Review changes to the driver source.
-- Keep a working kernel available.
-- Avoid loading modules compiled for an incompatible kernel.
-- Do not unbind unrelated HID interfaces.
-- Do not commit access tokens, passwords, private keys, or other secrets.
-- Keep logs focused on relevant driver diagnostics.
-
-This project is provided for development and hardware experimentation. It is not a substitute for careful kernel-level testing.
-
-## Contributing
-
-Bug reports, build fixes, documentation improvements, and verified hardware observations are welcome.
-
-When reporting a problem, include:
-
-- Linux distribution and kernel version.
-- Receiver USB ID.
-- Build command and relevant build errors.
-- Relevant kernel log messages.
-- Available power supply properties.
-- Reproduction steps.
-- Whether the issue occurs in wired mode, wireless mode, or both.
-
-Remove secrets and unrelated personal information from logs before sharing them.
-
-## Credits and License
-
-The source header attributes the original Kysona M600 HID driver to:
-
-**Lode Willems** — Copyright (c) 2024.
-
-The recovered source declares:
-
-```text
-SPDX-License-Identifier: GPL-2.0-or-later
-```
-
-The original copyright notice and license identifier must remain intact. Verify the source's provenance and applicable license terms before redistributing it, and retain the required copyright and license notices.
-
-Hardware-specific adaptations, testing results, and documentation changes should be clearly distinguished from the original author's work.
-
-See [`LICENSE`](LICENSE) for the included license text.
-
----
-
-**Repository:** [nebularch/cx-kysona-battery](https://github.com/nebularch/cx-kysona-battery)
-
-## Installation on Arch Linux (DKMS)
-
-DKMS automatically rebuilds the `hid-kysona` kernel module when a compatible kernel update is installed, provided the corresponding kernel headers are available.
-
-### Requirements
-
-Install DKMS, the headers for your installed kernel, and the standard build tools:
-
-```bash
-sudo pacman -S --needed dkms linux-headers base-devel
-```
-
-If you use a different kernel package, install its matching headers instead of `linux-headers`.
-
-### Install the driver
-
-From the repository directory, copy the driver files into the DKMS source directory:
+The DKMS source directory includes the version number. The following commands
+use the package version `0.1.0`:
 
 ```bash
 sudo install -d /usr/src/hid-kysona-0.1.0
-sudo install -m 644 hid-kysona.c Makefile dkms.conf \
-    /usr/src/hid-kysona-0.1.0/
+
+sudo install -m 0644 \
+  hid-kysona.c \
+  Makefile \
+  dkms.conf \
+  /usr/src/hid-kysona-0.1.0/
 ```
 
-Register and install the module:
+If the repository changes its source layout or DKMS version, adjust these
+commands to match the checked-out version.
+
+### 3. Register and build the module
+
+Register the source with DKMS, build it for the running kernel, and install it:
 
 ```bash
 sudo dkms add -m hid-kysona -v 0.1.0
@@ -579,74 +225,415 @@ sudo dkms install -m hid-kysona -v 0.1.0
 sudo depmod -a
 ```
 
-If version `0.1.0` is already registered, skip `dkms add`. If it is already built or installed, check `dkms status` before deciding whether to rebuild or reinstall. Do not remove an existing registration just to repeat these commands.
-
-Configure the module to load at startup:
-
-```bash
-echo hid_kysona | sudo tee /etc/modules-load.d/hid_kysona.conf
-```
-
-Reboot and verify the driver and battery supply.
-
-### Verify installation
+If DKMS reports that the module or version already exists, inspect the current
+DKMS state before removing or re-registering anything:
 
 ```bash
 dkms status
-modinfo -n hid_kysona
+```
+
+Do not delete a working DKMS registration merely to retry an installation.
+
+### 4. Configure startup loading
+
+Create a modules-load configuration so the driver is requested at startup:
+
+```bash
+printf '%s\n' hid_kysona |
+  sudo tee /etc/modules-load.d/hid_kysona.conf
+```
+
+Reboot when convenient so the module and receiver are initialized through the
+normal startup sequence:
+
+```bash
+sudo reboot
+```
+
+If you do not want to reboot immediately, you can inspect the current module
+and device state first. Avoid manually unbinding HID interfaces unless you
+understand the effect on the mouse and keyboard interfaces.
+
+## Verifying the installation
+
+After rebooting, check each layer independently.
+
+### 1. DKMS status
+
+```bash
+dkms status
+```
+
+Look for `hid-kysona/0.1.0` installed for the kernel you are using.
+
+### 2. Module loading
+
+```bash
 lsmod | grep '^hid_kysona'
-cat /sys/class/power_supply/cx-mouse-battery/{capacity,status}
 ```
 
-The module path should normally point to the DKMS installation under `/updates/dkms/`. The battery supply is available only when a supported device is detected and the driver probes successfully.
-
-### Kernel updates
-
-Before updating the kernel, ensure its matching headers are installed. After the update, check:
-
-```bash
-dkms status
-```
-
-If the module was not rebuilt for the new kernel, install the matching headers and rebuild it:
-
-```bash
-sudo dkms autoinstall
-```
-
-Then check the DKMS build logs if necessary:
-
-```bash
-find /var/lib/dkms/hid-kysona -name make.log -print
-```
-
-### Uninstall
-
-### Uninstall
-
-Remove the DKMS installation for this version:
-
-```bash
-sudo dkms remove -m hid-kysona -v 0.1.0 --all
-sudo rm -f /etc/modules-load.d/hid_kysona.conf
-sudo depmod -a
-```
-
-DKMS may restore a previously archived, distribution-provided module when removing its replacement. Check which module will be selected:
+Check which module file is selected:
 
 ```bash
 modinfo -n hid_kysona
-dkms status
 ```
 
-If the mouse is still connected, verify that its battery reporting and driver binding work as expected. Reboot if necessary to load the restored module.
+If the module is loaded but the output points somewhere unexpected, inspect
+the DKMS status and module paths before changing anything.
 
-Once you have confirmed that you no longer need the DKMS source, remove `/usr/src/hid-kysona-0.1.0/` manually. Do not delete it while you still intend to use or rebuild this DKMS version.
+### 3. HID binding
 
-### Diagnostics
+Inspect the driver's registered HID devices:
 
-Run the diagnostic script to check module loading, DKMS installation,
-mouse driver binding, battery reporting, and startup configuration:
+```bash
+ls -l /sys/bus/hid/drivers/kysona/
+```
+
+The directory name reflects the HID driver's registered name, which may differ
+from the module filename. If it does not exist, inspect kernel messages and
+the module's registration state.
+
+### 4. Battery power supply
+
+List the available power supplies:
+
+```bash
+ls -l /sys/class/power_supply/
+```
+
+On the tested setup, the mouse appears at:
+
+```text
+/sys/class/power_supply/cx-mouse-battery
+```
+
+Read its capacity and status:
+
+```bash
+cat /sys/class/power_supply/cx-mouse-battery/capacity
+cat /sys/class/power_supply/cx-mouse-battery/status
+```
+
+If available, inspect the voltage:
+
+```bash
+cat /sys/class/power_supply/cx-mouse-battery/voltage_now
+```
+
+A missing optional property is not necessarily a driver failure. Check which
+properties actually exist before diagnosing the result.
+
+### 5. Kernel messages
+
+Inspect messages related to the driver, HID, and DKMS:
+
+```bash
+sudo journalctl -k -b --no-pager |
+  grep -iE 'kysona|373b|1085|hid|battery'
+```
+
+Look for module-loading errors, failed device probes, report errors, or
+power-supply registration problems.
+
+## Diagnostics
+
+The repository includes a read-only diagnostic script:
 
 ```bash
 ./scripts/check-cx-mouse-battery.sh
+```
+
+It checks relevant installation and runtime details, including the module,
+DKMS installation, selected module path, HID binding, power-supply readings,
+and startup configuration.
+
+Run it from the repository directory. If permission is denied, confirm that
+the script is executable:
+
+```bash
+chmod +x scripts/check-cx-mouse-battery.sh
+./scripts/check-cx-mouse-battery.sh
+```
+
+The diagnostic script is intended to inspect the system, not repair it. Review
+its output before making changes.
+
+### Interpreting the results
+
+- **PASS:** The check found the expected state.
+- **WARN:** A condition needs attention or could not be confirmed; it may not
+  indicate a broken driver.
+- **FAIL:** The expected condition was not found. Investigate the related
+  installation or runtime layer.
+
+Share the complete output when reporting a problem, along with the kernel
+version and USB ID. Remove any unrelated sensitive information first.
+
+## Waybar integration
+
+Once the power-supply path exists, Waybar can display the reported percentage
+using a custom module.
+
+Add a module entry to your Waybar configuration:
+
+```json
+"custom/mouse-battery": {
+  "exec": "cat /sys/class/power_supply/cx-mouse-battery/capacity",
+  "interval": 30,
+  "format": "󰍽 {}%",
+  "tooltip": true
+}
+```
+
+Add the module name to the relevant Waybar module list, for example:
+
+```json
+"modules-right": [
+  "custom/mouse-battery"
+]
+```
+
+Merge it into your existing list instead of replacing your current modules.
+The exact configuration file and layout depend on your Waybar setup.
+
+The `exec` command prints the capacity value, while `{}` inserts that output
+into the displayed format. The `interval` controls how often Waybar runs the
+command; it does not control the kernel driver's own reporting behavior.
+
+If the power-supply path is absent, fix the driver or hardware detection
+first. Waybar cannot display a value that the kernel does not expose.
+
+## Kernel updates and DKMS maintenance
+
+DKMS can rebuild the driver for newly installed kernels, provided the matching
+headers and build tools are available.
+
+After a kernel update, check:
+
+```bash
+uname -r
+dkms status
+modinfo -n hid_kysona
+```
+
+If the module is missing for the running kernel, install the matching headers
+and inspect the DKMS build output before attempting a reinstall.
+
+Review the current build logs if DKMS reports a failure. Paths can vary by
+kernel and DKMS version, but the DKMS framework commonly stores build logs
+under:
+
+```text
+/var/lib/dkms/hid-kysona/0.1.0/
+```
+
+For a system with multiple installed kernels, verify that the module was built
+for the kernel you actually booted. A successful build for a different kernel
+does not establish that the current kernel has a usable module.
+
+Do not assume that a driver built for one kernel version is compatible with
+every later kernel version.
+
+## Troubleshooting
+
+### The receiver is not detected
+
+Check the USB ID:
+
+```bash
+lsusb -nn
+```
+
+If `373b:1085` is absent, check the receiver's USB connection and whether the
+system detects it at all. This driver cannot make an unenumerated receiver
+appear.
+
+If a different ID appears, do not assume compatibility based only on the
+product name.
+
+### The module is not loaded
+
+Check DKMS and the module file:
+
+```bash
+dkms status
+modinfo -n hid_kysona
+```
+
+Then inspect startup configuration and kernel messages:
+
+```bash
+cat /etc/modules-load.d/hid_kysona.conf
+sudo journalctl -k -b --no-pager |
+  grep -iE 'kysona|hid|module|firmware'
+```
+
+Confirm that the module was built for the running kernel and that its matching
+headers were installed.
+
+### The battery power supply is missing
+
+Check the module and HID binding before investigating userspace tools:
+
+```bash
+lsmod | grep '^hid_kysona'
+ls -l /sys/bus/hid/drivers/kysona/
+ls -l /sys/class/power_supply/
+```
+
+If the receiver is present but not bound to the expected driver, inspect the
+kernel messages. Do not blindly unbind or rebind interfaces: a receiver can
+expose multiple HID interfaces, and changing their bindings can disrupt
+input devices.
+
+### Battery readings appear stale or unexpected
+
+Read the properties directly:
+
+```bash
+cat /sys/class/power_supply/cx-mouse-battery/capacity
+cat /sys/class/power_supply/cx-mouse-battery/status
+```
+
+Check whether the value changes after using or charging the mouse, if
+applicable. Hardware may update battery telemetry intermittently, and a
+percentage is an estimate rather than a precise measurement of runtime.
+
+If a property does not exist, list the directory contents before assuming
+that every device must expose every property.
+
+### The module fails after a kernel update
+
+Confirm the running kernel and matching headers:
+
+```bash
+uname -r
+pacman -Q | grep -E '^(linux|dkms|.*headers)'
+dkms status
+```
+
+Review the DKMS build logs and rebuild only after confirming that the source
+and kernel headers are appropriate. If the driver no longer compiles against
+the new kernel, retain the build error when reporting the issue.
+
+## Uninstallation
+
+The following commands remove the DKMS registration and startup-loading
+configuration for this version. Review the version and paths before running
+them.
+
+First, remove the module from DKMS:
+
+```bash
+sudo dkms remove -m hid-kysona -v 0.1.0 --all
+```
+
+Remove the startup-loading file:
+
+```bash
+sudo rm -f /etc/modules-load.d/hid_kysona.conf
+```
+
+Remove the installed DKMS source:
+
+```bash
+sudo rm -rf /usr/src/hid-kysona-0.1.0
+```
+
+Then reboot so the running system returns to its normal device initialization
+sequence:
+
+```bash
+sudo reboot
+```
+
+If DKMS reports that the module is currently in use, do not forcefully remove
+or unbind it while relying on the mouse or its receiver. Reboot first, then
+complete cleanup if needed.
+
+The commands above do not delete the cloned Git repository in your home
+directory. Remove that directory separately only if you no longer need the
+source or diagnostic script.
+
+## Development and testing
+
+Clone the repository and inspect the source before making changes:
+
+```bash
+git clone https://github.com/nebularch/cx-kysona-battery.git
+cd cx-kysona-battery
+git status --short --branch
+```
+
+Important files include:
+
+| File | Purpose |
+|---|---|
+| `hid-kysona.c` | HID driver implementation |
+| `Makefile` | Module build instructions |
+| `dkms.conf` | DKMS package and build configuration |
+| `scripts/check-cx-mouse-battery.sh` | Read-only installation and runtime diagnostics |
+| `LICENSE` | Project license |
+
+For development, make changes in a working copy and review the diff before
+installing a new version:
+
+```bash
+git diff --check
+git diff
+```
+
+Test builds against the intended kernel and verify the device behavior on
+hardware that matches the target USB ID. Do not treat a successful compile as
+proof that HID reports, battery values, startup loading, and cleanup all work.
+
+When reporting a bug, include:
+
+- The receiver's USB ID.
+- The distribution and kernel version.
+- The DKMS status and relevant build error, if any.
+- Relevant kernel messages.
+- The output of the diagnostic script.
+- Which battery properties are present and whether their values change.
+
+Do not include private credentials, access tokens, or unrelated personal data.
+
+## Security and limitations
+
+This project installs an out-of-tree kernel module. Kernel modules run with
+high privileges, so inspect the source and understand the risks before
+installing software from any repository.
+
+Keep the source and installation instructions under review as kernels change.
+A successful installation on one machine does not guarantee safety,
+correctness, or compatibility on another.
+
+Known limitations include:
+
+- Testing is limited to the hardware and software configurations actually
+  exercised by the maintainer.
+- Other USB IDs and receiver revisions have not been established as supported.
+- Reported battery values depend on the receiver and its firmware.
+- Kernel API changes may require source updates.
+- DKMS requires suitable headers and a successful build for each target kernel.
+- The driver does not guarantee an exact battery-runtime estimate.
+
+Issues and reproducible test results are welcome. Include enough technical
+information to investigate the problem without exposing sensitive data.
+
+## Credits and license
+
+The source is based on a Kysona M600 HID driver originally attributed to
+**Lode Willems (2024)**.
+
+Please retain the original attribution and applicable license notices when
+modifying or redistributing the code.
+
+This project uses the **GNU General Public License v2.0 or later
+(GPL-2.0-or-later)**. See [`LICENSE`](LICENSE) for the license text.
+
+## Links
+
+- [Repository](https://github.com/nebularch/cx-kysona-battery)
+- [Releases](https://github.com/nebularch/cx-kysona-battery/releases)
+- [Report an issue](https://github.com/nebularch/cx-kysona-battery/issues)
