@@ -175,6 +175,16 @@ test -e "/usr/lib/modules/$(uname -r)/build" \
 DKMS rebuilds the module for supported installed kernels when the necessary
 kernel build files are available.
 
+## Screenshots
+
+### Mouse battery in Waybar
+
+![CX/Kysona mouse battery percentage displayed in Waybar](screenshots/waybar-display.png)
+
+### Driver diagnostics
+
+![CX/Kysona mouse battery driver diagnostics showing successful checks](screenshots/terminal-diagnostics.png)
+
 ## Quick installation
 
 For Arch Linux and Arch-based systems, install the build tools, DKMS, Git,
