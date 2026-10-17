@@ -545,3 +545,100 @@ See [`LICENSE`](LICENSE) for the included license text.
 ---
 
 **Repository:** [nebularch/cx-kysona-battery](https://github.com/nebularch/cx-kysona-battery)
+
+## Installation on Arch Linux (DKMS)
+
+DKMS automatically rebuilds the `hid-kysona` kernel module when a compatible kernel update is installed, provided the corresponding kernel headers are available.
+
+### Requirements
+
+Install DKMS, the headers for your installed kernel, and the standard build tools:
+
+```bash
+sudo pacman -S --needed dkms linux-headers base-devel
+```
+
+If you use a different kernel package, install its matching headers instead of `linux-headers`.
+
+### Install the driver
+
+From the repository directory, copy the driver files into the DKMS source directory:
+
+```bash
+sudo install -d /usr/src/hid-kysona-0.1.0
+sudo install -m 644 hid-kysona.c Makefile dkms.conf \
+    /usr/src/hid-kysona-0.1.0/
+```
+
+Register and install the module:
+
+```bash
+sudo dkms add -m hid-kysona -v 0.1.0
+sudo dkms build -m hid-kysona -v 0.1.0
+sudo dkms install -m hid-kysona -v 0.1.0
+sudo depmod -a
+```
+
+If version `0.1.0` is already registered, skip `dkms add`. If it is already built or installed, check `dkms status` before deciding whether to rebuild or reinstall. Do not remove an existing registration just to repeat these commands.
+
+Configure the module to load at startup:
+
+```bash
+echo hid_kysona | sudo tee /etc/modules-load.d/hid_kysona.conf
+```
+
+Reboot and verify the driver and battery supply.
+
+### Verify installation
+
+```bash
+dkms status
+modinfo -n hid_kysona
+lsmod | grep '^hid_kysona'
+cat /sys/class/power_supply/cx-mouse-battery/{capacity,status}
+```
+
+The module path should normally point to the DKMS installation under `/updates/dkms/`. The battery supply is available only when a supported device is detected and the driver probes successfully.
+
+### Kernel updates
+
+Before updating the kernel, ensure its matching headers are installed. After the update, check:
+
+```bash
+dkms status
+```
+
+If the module was not rebuilt for the new kernel, install the matching headers and rebuild it:
+
+```bash
+sudo dkms autoinstall
+```
+
+Then check the DKMS build logs if necessary:
+
+```bash
+find /var/lib/dkms/hid-kysona -name make.log -print
+```
+
+### Uninstall
+
+### Uninstall
+
+Remove the DKMS installation for this version:
+
+```bash
+sudo dkms remove -m hid-kysona -v 0.1.0 --all
+sudo rm -f /etc/modules-load.d/hid_kysona.conf
+sudo depmod -a
+```
+
+DKMS may restore a previously archived, distribution-provided module when removing its replacement. Check which module will be selected:
+
+```bash
+modinfo -n hid_kysona
+dkms status
+```
+
+If the mouse is still connected, verify that its battery reporting and driver binding work as expected. Reboot if necessary to load the restored module.
+
+Once you have confirmed that you no longer need the DKMS source, remove `/usr/src/hid-kysona-0.1.0/` manually. Do not delete it while you still intend to use or rebuild this DKMS version.
