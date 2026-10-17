@@ -25,6 +25,7 @@ without a separate polling application.
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation on Arch Linux](#installation-on-arch-linux)
+- [Quick installation](#quick-installation)
 - [Verifying the installation](#verifying-the-installation)
 - [Diagnostics](#diagnostics)
 - [Waybar integration](#waybar-integration)
@@ -173,6 +174,39 @@ test -e "/usr/lib/modules/$(uname -r)/build" \
 
 DKMS rebuilds the module for supported installed kernels when the necessary
 kernel build files are available.
+
+## Quick installation
+
+For Arch Linux and Arch-based systems, install the build tools, DKMS, Git,
+and headers matching your running kernel.
+
+For the standard Arch Linux kernel:
+
+```bash
+sudo pacman -S --needed base-devel dkms git linux-headers
+```
+
+For other kernels, install the matching headers instead.
+
+Clone the repository and run the installer as your normal user:
+
+```bash
+git clone https://github.com/nebularch/cx-kysona-battery.git
+cd cx-kysona-battery
+./install.sh
+```
+
+Do not run the installer with `sudo`. It requests elevated privileges when
+needed and checks the DKMS installation and startup configuration. It does not
+force-load the driver or unbind USB interfaces.
+
+Reboot when convenient, then check the installation and battery readings:
+
+```bash
+./scripts/check-cx-mouse-battery.sh
+```
+
+For detailed manual installation, verification, and troubleshooting, see below.
 
 ## Installation on Arch Linux
 
