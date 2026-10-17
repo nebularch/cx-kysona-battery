@@ -642,3 +642,11 @@ dkms status
 If the mouse is still connected, verify that its battery reporting and driver binding work as expected. Reboot if necessary to load the restored module.
 
 Once you have confirmed that you no longer need the DKMS source, remove `/usr/src/hid-kysona-0.1.0/` manually. Do not delete it while you still intend to use or rebuild this DKMS version.
+
+### Diagnostics
+
+Run the diagnostic script to check module loading, DKMS installation,
+mouse driver binding, battery reporting, and startup configuration:
+
+```bash
+./scripts/check-cx-mouse-battery.sh
