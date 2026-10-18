@@ -479,6 +479,8 @@ chmod +x scripts/check-cx-mouse-battery.sh
 ./scripts/check-cx-mouse-battery.sh
 ```
 
+The script currently runs its checks directly and does not provide a `--help` option. Run it without arguments to perform the diagnostics.
+
 The diagnostic script is intended to inspect the system, not repair it. Review
 its output before making changes.
 
