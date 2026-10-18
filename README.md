@@ -187,8 +187,88 @@ kernel build files are available.
 
 ## Quick installation
 
-For Arch Linux and Arch-based systems, install the build tools, DKMS, Git,
-and headers matching your running kernel.
+### One-command setup
+
+For Arch Linux and Arch-based systems, the bootstrap script automates
+repository setup, dependency installation, kernel-header checks, and launching
+the driver installer.
+
+**Review the script before running it.** The command below downloads a remote
+script and executes it immediately as your user. Inspect the source first and
+only run it if you trust its contents.
+
+Review the script:
+[set-driver.sh on GitHub](https://github.com/nebularch/cx-kysona-battery/blob/main/set-driver.sh)
+
+You can download and inspect it before execution:
+
+```bash
+curl -fsSLo /tmp/set-driver.sh \
+  https://raw.githubusercontent.com/nebularch/cx-kysona-battery/main/set-driver.sh
+less /tmp/set-driver.sh
+```
+
+If you are satisfied with the script, run it:
+
+```bash
+bash /tmp/set-driver.sh
+```
+
+Run the bootstrap as your **normal user, without `sudo`**. It requests
+elevated privileges through `sudo` when required to install packages or install
+the driver.
+
+#### Kernel headers are required
+
+DKMS must compile the driver against headers matching your running kernel.
+The bootstrap checks for the build directory associated with the running
+kernel and stops if it is missing.
+
+If the bootstrap reports that the kernel headers are missing, install the
+appropriate headers, then rerun the script.
+
+For the standard Arch Linux kernel:
+
+```bash
+sudo pacman -S --needed linux-headers
+```
+
+For other kernels, install the corresponding headers package instead. For
+example, use the matching package for `linux-lts`, `linux-zen`, or a
+custom kernel. The package must match the kernel you intend to build the
+module for. If you have just installed or updated a kernel or its headers,
+reboot into that kernel before rerunning the bootstrap when necessary.
+
+#### What the bootstrap does
+
+- Installs required tools using Pacman: `base-devel`, `dkms`, `git`, and
+  `curl`.
+- Checks that the running kernel has a corresponding build directory.
+- Clones the project or updates an existing clean checkout using a
+  fast-forward-only Git pull.
+- Refuses to update an existing project directory if it has local changes or
+  untracked files, or if its Git remote does not match the expected repository.
+- Launches `install.sh`, which handles DKMS registration and installation.
+
+The script does not automatically resolve missing kernel headers, overwrite
+unrecognized existing DKMS source, force-load the driver, or unbind USB
+interfaces. Read any error message before continuing; do not bypass safety
+checks just to make the installation proceed.
+
+After installation, reboot when convenient and check the driver and battery
+readings:
+
+```bash
+~/Projects/cx-kysona-battery/scripts/check-cx-mouse-battery.sh
+```
+
+If you chose a different project directory, run the diagnostic script from
+that directory instead.
+
+### Manual installation
+
+For users who prefer to inspect and run each installation step themselves,
+install the build tools, DKMS, Git, and headers matching your running kernel.
 
 For the standard Arch Linux kernel:
 
