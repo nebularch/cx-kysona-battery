@@ -696,6 +696,7 @@ Important files include:
 | `hid-kysona.c` | HID driver implementation |
 | `Makefile` | Module build instructions |
 | `dkms.conf` | DKMS package and build configuration |
+| `set-driver.sh` | One-command bootstrap: checks prerequisites, safely clones or updates the repository, and launches the installer |
 | `scripts/check-cx-mouse-battery.sh` | Read-only installation and runtime diagnostics |
 | `LICENSE` | Project license |
 
