@@ -1,4 +1,4 @@
-# CX Kysona Mouse Battery Driver
+# CX Kysona Mouse Battery Driver (VXE Dragonfly R1 SE)
 
 [![Latest Release](https://img.shields.io/github/v/release/nebularch/cx-kysona-battery)](https://github.com/nebularch/cx-kysona-battery/releases)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue.svg)](LICENSE)
